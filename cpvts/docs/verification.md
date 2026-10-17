@@ -1,27 +1,62 @@
 # Verification
 
-## Passed locally
+This guide describes the checks implemented in the repository and how to run them. Coverage is not proof that a particular checkout, deployment or database has passed. Record fresh results against the commit and environment tested.
 
-- TypeScript checking and Vite production build.
-- 12 automated test groups running against actual embedded PostgreSQL and HTTP API handlers, covering initialization, exact fee rules, input validation, normalized duplicates, first-free allocation, full zones, concurrent request outcomes, repeated checkout, database constraints, IST reporting boundaries, migration reapplication, durable database reopening, anonymous access restrictions and cross-origin mutation rejection.
-- Three additional tests verify hosted connection configuration, enforced TLS, credential parsing and parameterized SQL boundaries (15 local test groups total).
-- API tests create isolated data; no sample vehicles are seeded into the application database.
+## Local tests and build
 
-## Not verified
+Run from `cpvts/` after installing dependencies:
 
-- Browser visual/layout and click-through QA: the development and production server processes started, but cross-process loopback connections timed out in this environment. No successful browser preview or screenshot is claimed. Test desktop, tablet, mobile, 200% zoom and print output when running on the host.
-- Optional WebMCP registration: capability is feature-detected and failure does not affect the standard interface; no supported live browser context was reachable to test it.
+```bash
+npm test
+npm run build
+```
 
-No hosted site was published. The local preview process was stopped after verification attempts.
+Tests use Node's built-in test runner through `tsx`. The current suite defines 16 top-level tests:
 
-## Passed against hosted Supabase — 9 October 2026
+| Source | Count | Coverage |
+| --- | --- | --- |
+| [parking.test.ts](../tests/parking.test.ts) | 13 | Initialization; first-free allocation; normalization and duplicate rejection; reservation creation, overwrite rejection and release; fee rules; checkout validation; input validation; concurrent arrivals and duplicate operations; IST reporting; database constraints; persistence and migration reapplication; anonymous access restrictions; POST origin rejection and unknown routes |
+| [postgres.test.ts](../tests/postgres.test.ts) | 3 | Connection configuration and TLS settings; invalid database URLs; parameterized RPC arguments and identifier restrictions |
 
-- Connected through the user-supplied Session pooler with certificate and hostname verification using the public Supabase CA. The direct IPv6 connection was unreachable here.
-- Applied `migrations/001_parking.sql` successfully. Verified ten two-wheeler and five four-wheeler spaces.
-- Verified the real pooled application adapter can read hosted parking status as `service_role`.
-- Checked RLS is enabled and `anon` cannot select parking records or invoke check-in.
-- Ran actual HTTP API handlers against hosted PostgreSQL for check-in, duplicate prevention, earlier-exit rejection, finder, checkout and all six category/type fee combinations.
-- Used two independent hosted sessions to verify that concurrent allocations block on the slot table lock. The queued allocation continued correctly after the first transaction rolled back.
-- Rolled back every test write and checked that no verification records remained. All 15 spaces remained available.
+Parking tests use isolated PGlite databases and local HTTP handlers. They do not write to hosted Supabase. The PostgreSQL configuration tests inspect settings without establishing a hosted connection. `npm run build` checks TypeScript and builds the Vite frontend.
 
-Repeat these hosted checks explicitly with `npm run db:verify`; it requires the private database URL and a vacant space in each zone. Standard `npm test` remains isolated from the hosted database.
+To run the two test files explicitly:
+
+```bash
+npx tsx --test tests/parking.test.ts tests/postgres.test.ts
+```
+
+## Hosted Supabase verification
+
+Configure `DATABASE_URL` and the CA certificate as described in [certificate setup](../certs/README.md), and apply the schema before verification:
+
+```bash
+npm run db:migrate
+npm run db:verify
+```
+
+The migration is a persistent schema change; it is separate from the verification transactions. Hosted verification requires an unoccupied, unreserved slot in each vehicle zone and credentials able to assume `service_role`.
+
+[verify-supabase.ts](../server/verify-supabase.ts) checks:
+
+- The pooled adapter reads all 15 spaces over verified TLS.
+- RLS is enabled on slots and records; anonymous record reads and check-in execution are denied.
+- HTTP health, check-in, duplicate rejection, earlier-exit rejection, vehicle lookup, checkout and all six owner/vehicle fee combinations.
+- Two hosted sessions contend on the slot-table allocation lock.
+- Verification records are rolled back and no marker records remain.
+
+This command is explicit and is not run automatically at startup. It does not verify every route or reservation-table permission.
+
+## Manual UI checks
+
+Run `npm run dev` and open the server URL. Check desktop and mobile layouts, keyboard navigation, 200% zoom, each navigation screen, reservation creation/release, receipt printing, 15-second dashboard refresh, and connection-error feedback. Optional WebMCP registration requires a supporting browser; its failure must not prevent normal UI use.
+
+## Current coverage gaps and behavior limits
+
+- Reservation tests cover free-slot reservation and overwrite rejection, but not reservation of an occupied slot. The current SQL allows the latter.
+- Zone `vacant` totals include unoccupied reserved spaces; count `Available` slots for allocatable capacity.
+- The POST Origin check is tested. DELETE reservation requests are not subject to that explicit check.
+- Hosted concurrency verification covers check-in allocation, not all combinations of reservation creation, release and checkout.
+- Automated tests do not establish visual correctness, public deployment readiness or operator authentication.
+
+See [architecture](architecture.md) and the [API contract](api-contract.md) for the implemented behavior and trust boundary.
