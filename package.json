@@ -1,0 +1,13 @@
+{
+  "name": "cpvt-system-root",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "npm --prefix cpvts run dev",
+    "build": "npm --prefix cpvts run build",
+    "start": "npm --prefix cpvts run start",
+    "test": "npm --prefix cpvts run test",
+    "db:migrate": "npm --prefix cpvts run db:migrate",
+    "db:verify": "npm --prefix cpvts run db:verify"
+  }
+}
